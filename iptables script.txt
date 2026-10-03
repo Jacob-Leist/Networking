@@ -1,0 +1,144 @@
+iptables script (with roll back)
+
+# Save curent rules (before script) #
+iptables-save > /etc/rules.bs
+
+# Clear rules #
+iptables -F
+iptables -X
+
+# Authorize already established connections
+iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# Allow all used ports #
+iptables -A INPUT -p tcp -m multiport --dports 20,21,25,53,80,88,110,135,139,143,389,443,5432,993,995 -j ACCEPT
+iptables -A INPUT -p udp -m multiport --dports 53,80,88,123,135,139,389,443 -j ACCEPT
+iptables -A INPUT -p tcp -m multiport --dports 445,464,465,597,636,3306,3268,3269,3389,5985,5986,8080,9997,587 -j ACCEPT
+iptables -A INPUT -p udp -m multiport --dports 445,464,636,3268,3269,5985,5986,8080 -j ACCEPT
+
+iptables -A FORWARD -p tcp -m multiport --dports 20,21,25,53,80,88,110,135,139,143,389,443 -j ACCEPT
+iptables -A FORWARD -p tcp -m multiport --dports 445,464,465,597,636,3306,3268,3269,3389,5985,5986,8080,9997 -j ACCEPT
+iptables -A FORWARD -p udp -m multiport --dports 53,80,88,123,135,139,389,443,445,464,636,3268,3269,5985,5986 -j ACCEPT
+
+# allow remote connections #
+iptables -A INPUT -p tcp -m multiport --dports 22,3389 -j ACCEPT
+iptables -A INPUT -p udp -m multiport --dports 22,3389 -j ACCEPT
+iptables -A FORWARD -p tcp -m multiport --dports 22,3389 -j ACCEPT
+iptables -A FORWARD -p udp -m multiport --dports 22,3389 -j ACCEPT
+
+# allow all #
+iptables -A INPUT -j ACCEPT
+iptables -A OUTPUT -j ACCEPT
+iptables -A FORWARD -j ACCEPT
+
+# Block everything by default
+iptables -t filter -P INPUT DROP
+iptables -t filter -P FORWARD DROP
+iptables -t filter -P OUTPUT DROP
+
+# Allow Ping #
+iptables -t filter -A INPUT -p icmp -j ACCEPT
+iptables -t filter -A OUTPUT -p icmp -j ACCEPT
+
+# No port scaning #
+iptables -N port-scanning
+iptables -A port-scanning -p tcp --tcp-flags SYN,ACK,FIN,RST RST -m limit --limit 1/s --limit-burst 2 -j RETURN
+iptables -A port-scanning -j DROP
+
+# SSH attack protection #
+iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m limit --limit 1/min --limit-burst 5 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m limit --limit 1/min --limit-burst 5 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 22 -m conntrack --ctstate NEW -m limit --limit 1/min --limit-burst 5 -j ACCEPT
+
+# Save curent rules (after script) #
+iptables-save > /etc/rules.as
+
+iptables -L -v -n
+
+
+device ip table:
+
+Hostname      | OS                    | IP   | Role
+Milkware      | Alpine                | .2   | Router
+MilkFarm      | Microsoft Server 2016 | .17  | Active Directory
+Moocrosoft    | Microsoft Server 2019 | .63  | E-Commerce Server
+Wagyu Windows | 10 Education          | .60  | Employee Machine
+Moolissa      | Ubuntu 24.04          | .103 | Web Server
+Cowbell       | Ubuntu 24.04          | .100 | MySQL Database
+Milkhub       | Ubuntu 24.04          | .86  | Mail Server
+Cowbuntu      | Ubuntu 24.04          | .98  | SMB Sharing
+Cowtoo        | Gentoo Gentoo         |      | Server
+
+External: 10.100.119.0/24
+Internal: 192.168.1.0/24
+
+VPN: 192.168.220.3
+
+
+iptables playbook:
+
+check for unknown user accounts
+change all passwords of used accounts
+create back door account 
+check for cron jobs
+check ps aux for unknown processes
+back up iptables configs for pre config backup
+create any any rule on the bottom off all rules
+find all used ports needed for operations
+create rule for all ports for all devices (multiport and /24)
+clear counters (iptables -z)
+find any traffic not covered over found port and ip range (change as needed)
+delete any any rule (hope everything works)
+create rules for specific boxes
+delete /24 rule
+fix any other problem seen
+
+
+inital commands
+
+cat /etc/passwd
+
+passwd 
+
+awk -F: '($3 == 0) {print $1}' /etc/passwd
+
+passwd -l <username>      locks user account
+deluser --remove-home <user> remove account and files
+
+ps aux
+netstat -tulpn
+
+kill -9 <PID>
+
+crontab -l
+
+rc-status
+rc-service <service_name> stop
+rc-update del <service_name>
+
+apk updateapk add openssh
+
+apk update
+apk add fail2ban iptables
+
+cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+[DEFAULT]
+# Duration an IP stays banned
+bantime  = 10m
+# Time window during which failed attempts are counted
+findtime = 10m
+# Max failed attempts before triggering a ban
+maxretry = 3
+# IP addresses or ranges to NEVER ban (add your trusted admin IP/subnet here)
+ignoreip = 127.0.0.1/8 192.168.1.0/24
+
+[sshd]
+enabled = true
+port    = ssh
+logpath = /var/log/messages
+backend = polling
+
+
+fail2ban-client status sshd
+fail2ban-client status
